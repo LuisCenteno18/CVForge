@@ -1,0 +1,161 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-dark: #FAF3E1;
+  --bg-dark-secondary: #F5E7C6;
+  --text-main: #222222;
+  --text-muted: rgba(34, 34, 34, 0.65);
+  --accent-primary: #FA8112;
+  --accent-secondary: #ff9b3d;
+  --border-color: rgba(34, 34, 34, 0.1);
+  --glass-bg: rgba(245, 231, 198, 0.65);
+  --glass-border: rgba(34, 34, 34, 0.08);
+  --glass-shadow: 0 4px 20px rgba(34, 34, 34, 0.03);
+  --font-main: 'Inter', sans-serif;
+  --font-heading: 'Playfair Display', serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-border);
+  border-radius: 40px;
+  box-shadow: var(--glass-shadow);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-block;
+}
+
+/* Base button styles */
+.btn {
+  background: var(--text-main);
+  border: none;
+  border-radius: 999px; /* Pill shape */
+  color: var(--bg-dark);
+  padding: 12px 28px;
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: var(--font-main);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn:hover {
+  transform: scale(1.05);
+  background: var(--accent-primary);
+  color: white;
+}
+
+.btn-secondary {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  box-shadow: none;
+}
+
+.btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+  box-shadow: none;
+  color: var(--text-main);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 rgba(250, 129, 18, 0.4); }
+  70% { box-shadow: 0 0 0 15px rgba(250, 129, 18, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(250, 129, 18, 0); }
+}
+
+/* App container */
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+  margin-top: 2rem;
+}
+
+.header h1 {
+  font-family: var(--font-heading);
+  font-size: 4rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.5px;
+}
+
+.header p {
+  color: var(--text-muted);
+  font-size: 1.2rem;
+}
+
+/* Navigation */
+.app-nav {
+  margin: 0 auto 3rem;
+  padding: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  border-radius: 999px; /* Pill shape */
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  width: fit-content;
+}
+
+.app-nav button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.75rem 1.5rem;
+  border-radius: 999px;
+  font-weight: 500;
+  font-family: var(--font-main);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.app-nav button:hover {
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.app-nav button.active {
+  color: white;
+  background: var(--accent-primary);
+}
