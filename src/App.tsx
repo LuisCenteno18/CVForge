@@ -281,7 +281,7 @@ function App() {
           </button>
           <div className="logo-section" style={{ cursor: 'pointer' }} onClick={() => setAppState('upload')}>
             <h1>CV<span className="gradient-text">Forge</span></h1>
-            <p>AI-Powered CV Synthesis & Design</p>
+            <p>Create your own personalized website and find your dream job.</p>
           </div>
           <div style={{ width: '48px' }} /> {/* Spacer for balance */}
         </div>
