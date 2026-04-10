@@ -7,8 +7,17 @@ import CvPreview from './components/CvPreview';
 import JobMarket from './components/JobMarket';
 import { extractAndStructureCV, scourJobOpportunities } from './utils/gemini';
 import type { TemplateName } from './components/TemplateSelector';
+import { Menu } from 'lucide-react';
+import Sidebar from './components/Sidebar';
 
 export type AppState = 'upload' | 'processing' | 'editor' | 'templates' | 'preview' | 'jobs';
+
+export interface Session {
+  id: string;
+  name: string;
+  data: CVData;
+  updatedAt: number;
+}
 
 export interface Experience {
   company: string;
@@ -54,6 +63,8 @@ export interface JobOpportunity {
   company: string;
   matchReason: string;
   salaryRange: string;
+  url: string;
+  platform?: string;
 }
 
 const emptyCvData: CVData = {
@@ -82,6 +93,123 @@ function App() {
   const [extractionStatus, setExtractionStatus] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Persistent data initialization & migration
+  useEffect(() => {
+    const savedSessions = localStorage.getItem('cvforge_sessions');
+    const oldData = localStorage.getItem('cvforge_data');
+
+    let initialSessions: Session[] = [];
+
+    if (savedSessions) {
+      try {
+        initialSessions = JSON.parse(savedSessions);
+      } catch (e) { console.error("Failed to parse sessions", e); }
+    } else if (oldData) {
+      // Migration from single save to sessions
+      try {
+        const parsed = JSON.parse(oldData);
+        const migratedSession: Session = {
+          id: 'migrated-' + Date.now(),
+          name: parsed.name || 'Migrated Profile',
+          data: parsed,
+          updatedAt: Date.now()
+        };
+        initialSessions = [migratedSession];
+        localStorage.removeItem('cvforge_data');
+      } catch (e) { console.error("Migration failed", e); }
+    }
+
+    if (initialSessions.length > 0) {
+      setSessions(initialSessions);
+      setActiveSessionId(initialSessions[0].id);
+      setCvData(initialSessions[0].data);
+      if (appState === 'upload') setAppState('editor');
+    }
+  }, []);
+
+  // Save sessions whenever they change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem('cvforge_sessions', JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
+  const handleSave = (data: CVData) => {
+    if (!activeSessionId) {
+      // First save if nothing exists (shouldn't happen with migration but safe fallback)
+      const newId = 'session-' + Date.now();
+      const newSession: Session = {
+        id: newId,
+        name: data.name || 'Personal Profile',
+        data,
+        updatedAt: Date.now()
+      };
+      setSessions([newSession]);
+      setActiveSessionId(newId);
+    } else {
+      setSessions(prev => prev.map(s => 
+        s.id === activeSessionId 
+          ? { ...s, data, name: data.name || s.name, updatedAt: Date.now() } 
+          : s
+      ));
+    }
+  };
+
+  const handleCreateSession = () => {
+    const newId = 'session-' + Date.now();
+    const newSession: Session = {
+      id: newId,
+      name: 'New Profile',
+      data: emptyCvData,
+      updatedAt: Date.now()
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setCvData(emptyCvData);
+    setAppState('editor');
+    setIsSidebarOpen(false);
+  };
+
+  const handleSwitchSession = (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (session) {
+      setActiveSessionId(id);
+      setCvData(session.data);
+      setAppState('editor');
+      setIsSidebarOpen(false);
+    }
+  };
+
+  const handleDeleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm("Delete this session?")) {
+      const newSessions = sessions.filter(s => s.id !== id);
+      setSessions(newSessions);
+      if (activeSessionId === id) {
+        if (newSessions.length > 0) {
+          handleSwitchSession(newSessions[0].id);
+        } else {
+          setActiveSessionId(null);
+          setCvData(emptyCvData);
+          setAppState('upload');
+        }
+      }
+    }
+  };
+
+  const handleReset = () => {
+    if (window.confirm("Are you sure you want to clear ALL saved sessions? This cannot be undone.")) {
+      localStorage.removeItem('cvforge_sessions');
+      setSessions([]);
+      setActiveSessionId(null);
+      setCvData(emptyCvData);
+      setAppState('upload');
+    }
+  };
 
   useEffect(() => {
     let interval: any;
@@ -146,10 +274,28 @@ function App() {
 
   return (
     <div className="app-container">
-      <header className="header animate-fade-in" style={{ cursor: 'pointer' }} onClick={() => setAppState('upload')}>
-        <h1>CV<span className="gradient-text">Forge</span></h1>
-        <p>AI-Powered CV Synthesis & Design</p>
+      <header className="header animate-fade-in">
+        <div className="header-top">
+          <button className="btn-icon sidebar-toggle" onClick={() => setIsSidebarOpen(true)}>
+            <Menu size={24} />
+          </button>
+          <div className="logo-section" style={{ cursor: 'pointer' }} onClick={() => setAppState('upload')}>
+            <h1>CV<span className="gradient-text">Forge</span></h1>
+            <p>AI-Powered CV Synthesis & Design</p>
+          </div>
+          <div style={{ width: '48px' }} /> {/* Spacer for balance */}
+        </div>
       </header>
+
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSwitch={handleSwitchSession}
+        onDelete={handleDeleteSession}
+        onCreate={handleCreateSession}
+      />
 
       {showNav && (
         <nav className="app-nav glass-panel animate-fade-in">
@@ -180,7 +326,12 @@ function App() {
             )}
             <CvEditor
               data={cvData}
-              onChange={setCvData}
+              onChange={(newData) => {
+                setCvData(newData);
+                // Optional: Auto-save could go here
+              }}
+              onSave={handleSave}
+              onReset={handleReset}
               onPreview={() => setAppState('templates')}
               onImport={handleEditorImport}
               isImporting={isImporting}

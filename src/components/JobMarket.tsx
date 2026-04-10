@@ -9,6 +9,16 @@ interface JobMarketProps {
   onRefresh: () => void;
 }
 
+const getDomain = (url: string, platform?: string) => {
+  if (platform) return platform.toLowerCase();
+  try {
+    const domain = new URL(url).hostname;
+    return domain.replace('www.', '');
+  } catch (e) {
+    return 'view site';
+  }
+};
+
 const JobMarket: React.FC<JobMarketProps> = ({ opportunities, isScouring, onRefresh }) => {
   return (
     <div className="job-market-container animate-fade-in">
@@ -43,11 +53,20 @@ const JobMarket: React.FC<JobMarketProps> = ({ opportunities, isScouring, onRefr
                 </div>
                 <div className="title-area">
                   <h3>{job.title}</h3>
-                  <p className="company-name">{job.company}</p>
+                  <div className="company-and-platform">
+                    <span className="company-name">{job.company}</span>
+                    {job.platform && <span className={`platform-badge ${job.platform.toLowerCase()}`}>{job.platform}</span>}
+                  </div>
                 </div>
-                <div className="external-link">
+                <a 
+                  href={job.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="external-link"
+                  title={`View on ${getDomain(job.url, job.platform)}`}
+                >
                   <ExternalLink size={18} />
-                </div>
+                </a>
               </div>
               
               <div className="card-body">
@@ -65,7 +84,14 @@ const JobMarket: React.FC<JobMarketProps> = ({ opportunities, isScouring, onRefr
               </div>
 
               <div className="card-footer">
-                <button className="btn btn-full">Apply Now</button>
+                <a 
+                  href={job.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn btn-full apply-btn"
+                >
+                  Apply Now on {getDomain(job.url, job.platform)}
+                </a>
               </div>
             </div>
           ))

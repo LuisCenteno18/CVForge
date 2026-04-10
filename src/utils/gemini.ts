@@ -199,9 +199,20 @@ ${JSON.stringify(cvData, null, 2)}
 Return ONLY a valid JSON object (no markdown, no backticks):
 {
   "opportunities": [
-    { "title": "string", "company": "string", "matchReason": "string", "salaryRange": "string" }
+    { 
+      "title": "string", 
+      "company": "string", 
+      "matchReason": "string", 
+      "salaryRange": "string", 
+      "platform": "LinkedIn | Indeed | Glassdoor | Specialized",
+      "url": "https://www.linkedin.com/jobs/search/?keywords={TITLE}&location={LOCATION}" 
+    }
   ]
-}`
+}
+PRECISION RULES:
+1. Use '+' for spaces in Title/Location.
+2. If the user is a Geoscientist/Geologist, vary the links to include LinkedIn and Indeed specifically for those titles.
+3. Ensure the location from the profile is used if present.`
   }];
 
   try {

@@ -7,12 +7,61 @@ interface CvEditorProps {
   data: CVData;
   onChange: (data: CVData) => void;
   onPreview: () => void;
+  onSave: (data: CVData) => void;
+  onReset: () => void;
   onImport: (files: File[]) => void;
   isImporting?: boolean;
 }
 
-const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onImport, isImporting = false }) => {
+const TagInput: React.FC<{
+  tags: string[];
+  placeholder: string;
+  onChange: (tags: string[]) => void;
+}> = ({ tags, placeholder, onChange }) => {
+  const [inputValue, setInputValue] = useState('');
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Enter' || e.key === ',') && inputValue.trim()) {
+      e.preventDefault();
+      const newTag = inputValue.trim().replace(/,$/, '');
+      if (newTag && !tags.includes(newTag)) {
+        onChange([...tags, newTag]);
+      }
+      setInputValue('');
+    } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
+      onChange(tags.slice(0, -1));
+    }
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    onChange(tags.filter(t => t !== tagToRemove));
+  };
+
+  return (
+    <div className="tag-input-wrapper">
+      <div className="tag-list">
+        {tags.map((tag, idx) => (
+          <span key={idx} className="tag-pill">
+            {tag}
+            <button className="tag-remove" onClick={() => removeTag(tag)}><X size={12} /></button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={tags.length === 0 ? placeholder : "Add more..."}
+          className="tag-bare-input"
+        />
+      </div>
+    </div>
+  );
+};
+
+const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onSave, onReset, onImport, isImporting = false }) => {
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +145,12 @@ const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onImport
     updateField('languages', data.languages.filter((_, i) => i !== idx));
   };
 
+  const handleLocalSave = () => {
+    onSave(data);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
   return (
     <div className="editor-container animate-fade-in">
       {/* ─── Import Modal ─── */}
@@ -164,12 +219,18 @@ const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onImport
       <div className="editor-header">
         <h2>Edit Your <span className="gradient-text">Profile</span></h2>
         <div className="editor-header-actions">
+          <button className="btn secondary reset-btn" onClick={onReset} title="Clear all data">
+            <Trash2 size={16} />
+          </button>
           <button className="btn secondary import-btn" onClick={() => setShowImportModal(true)} disabled={isImporting}>
             <Upload size={16} style={{ marginRight: '8px' }} />
-            {isImporting ? 'Extracting…' : 'Import CV / Letter'}
+            {isImporting ? 'Extracting…' : 'Import'}
           </button>
-          <button className="btn" onClick={onPreview}>
+          <button className={`btn save-btn ${isSaved ? 'success' : ''}`} onClick={handleLocalSave}>
             <Save size={18} style={{ marginRight: '8px' }} />
+            {isSaved ? 'Saved!' : 'Save Profile'}
+          </button>
+          <button className="btn primary-gradient" onClick={onPreview}>
             Choose Template
           </button>
         </div>
@@ -291,11 +352,11 @@ const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onImport
       <section className="editor-section glass-panel">
         <div className="section-title"><Award size={20} /> Skills</div>
         <div className="field-group">
-          <label>Skills (comma-separated)</label>
-          <input
-            value={data.skills.join(', ')}
-            onChange={e => updateField('skills', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-            placeholder="React, TypeScript, Node.js, Python, SQL..."
+          <label>Professional Skills</label>
+          <TagInput
+            tags={data.skills}
+            onChange={tags => updateField('skills', tags)}
+            placeholder="Type a skill and press Enter (e.g. React, TypeScript...)"
           />
         </div>
       </section>
@@ -336,11 +397,11 @@ const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onImport
       <section className="editor-section glass-panel">
         <div className="section-title"><Award size={20} /> Certifications</div>
         <div className="field-group">
-          <label>Certifications (comma-separated)</label>
-          <input
-            value={data.certifications.join(', ')}
-            onChange={e => updateField('certifications', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-            placeholder="AWS Certified Developer, Google Cloud Architect..."
+          <label>Licenses & Certifications</label>
+          <TagInput
+            tags={data.certifications}
+            onChange={tags => updateField('certifications', tags)}
+            placeholder="Type a certification and press Enter..."
           />
         </div>
       </section>
@@ -349,11 +410,11 @@ const CvEditor: React.FC<CvEditorProps> = ({ data, onChange, onPreview, onImport
       <section className="editor-section glass-panel">
         <div className="section-title"><Heart size={20} /> Interests</div>
         <div className="field-group">
-          <label>Interests / Hobbies (comma-separated)</label>
-          <input
-            value={data.interests.join(', ')}
-            onChange={e => updateField('interests', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-            placeholder="Open Source, Hiking, Photography..."
+          <label>Personal Interests</label>
+          <TagInput
+            tags={data.interests}
+            onChange={tags => updateField('interests', tags)}
+            placeholder="Type an interest and press Enter (e.g. Open Source, Hiking...)"
           />
         </div>
       </section>

@@ -74,9 +74,53 @@
   color: var(--text-muted);
 }
 
+.company-and-platform {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.platform-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  letter-spacing: 0.05em;
+}
+
+.platform-badge.linkedin {
+  background: rgba(0, 119, 181, 0.1);
+  color: #0077b5;
+}
+
+.platform-badge.indeed {
+  background: rgba(33, 100, 232, 0.1);
+  color: #2164e8;
+}
+
+.platform-badge.glassdoor {
+  background: rgba(12, 170, 65, 0.1);
+  color: #0caa41;
+}
+
+.platform-badge.specialized {
+  background: rgba(250, 129, 18, 0.1);
+  color: var(--accent-primary);
+}
+
 .external-link {
   color: var(--text-muted);
   opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+.external-link:hover {
+  color: var(--accent-primary);
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .card-body {
@@ -109,6 +153,19 @@
 
 .btn-full {
   width: 100%;
+}
+
+.apply-btn {
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.apply-btn:hover {
+  background: var(--accent-primary);
+  color: white;
 }
 
 .loading .spin {
