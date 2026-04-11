@@ -1,229 +1,210 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { extractTextFromFile } from "./documentParser";
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(API_KEY);
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN;
 
-// Model fallback chain — if one model hits rate limits, try the next
-const MODEL_CHAIN = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "");
+
+// Model choices (using GPT-4o on GitHub as Gemini 1.5 Pro is not currently available via the inference API)
+const GITHUB_MODEL = "gpt-4o";
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+
+const EXTRACTION_PROMPT = `You are an expert HR recruitment assistant.
+I am providing you with the text content extracted from one or more documents (a CV/Resume and optionally a Motivational Letter).
+
+YOUR TASK:
+1. Read and understand the provided text thoroughly.
+2. Extract the candidate's full professional profile.
+3. If a motivational letter is present, use it to refine the "objective" summary — blending factual experience with aspirational intent.
+4. Return ONLY a valid JSON object (no markdown, no backticks, no extra text).
+
+CRITICAL RULES:
+- Extract EVERY job experience entry found.
+- Extract ALL skills, education, languages, and certifications.
+- The "objective" should be 2-3 compelling sentences synthesizing the profile.
+- Sort experience chronologically (newest first).
+- If a field is unclear, make your best inference.
+
+REQUIRED JSON STRUCTURE:
+{
+  "name": "Full Name",
+  "role": "Current or most recent professional title",
+  "email": "email if found",
+  "phone": "phone if found",
+  "location": "city, country",
+  "website": "personal website if found",
+  "linkedin": "linkedin URL if found",
+  "objective": "Synthesized summary",
+  "experience": [
+    { "company": "Name", "position": "Title", "duration": "Range", "description": "Details" }
+  ],
+  "education": [
+    { "institution": "Name", "degree": "Type", "field": "Field", "duration": "Range" }
+  ],
+  "skills": ["skill1", "skill2"],
+  "languages": [{ "name": "Language", "level": "Proficiency" }],
+  "certifications": ["cert1"],
+  "interests": ["interest1"]
+}
+
+Output ONLY the JSON object.`;
 
 /**
- * Convert a File object to a base64 data string for Gemini inlineData.
+ * Call GitHub Models API (OpenAI-compatible)
  */
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(",")[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+async function callGithubModels(content: string, onProgress?: (msg: string) => void): Promise<string> {
+  onProgress?.(`Using GitHub Models: ${GITHUB_MODEL}...`);
+  
+  const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GITHUB_TOKEN}`
+    },
+    body: JSON.stringify({
+      messages: [
+        { role: "system", content: EXTRACTION_PROMPT },
+        { role: "user", content: content }
+      ],
+      model: GITHUB_MODEL,
+      temperature: 0.1,
+      max_tokens: 4096
+    })
   });
-}
 
-/**
- * Determine the MIME type for a file based on extension
- */
-function getMimeType(file: File): string {
-  const ext = file.name.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf": return "application/pdf";
-    case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    case "doc": return "application/msword";
-    default: return file.type || "application/octet-stream";
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GitHub Models API error (${response.status}): ${errorText}`);
   }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
 /**
- * Sleep helper for retry delays
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Call Gemini with automatic retry and model fallback.
- * If a model hits 429 rate limits, it tries the next model in the chain.
- * Also retries within the same model with exponential backoff.
+ * Call Gemini with automatic retry and model fallback (using Google SDK)
  */
 async function callGeminiWithRetry(
   parts: any[],
   onProgress?: (msg: string) => void,
   maxRetriesPerModel = 2
 ): Promise<string> {
-  for (const modelName of MODEL_CHAIN) {
+  for (const modelName of GEMINI_MODELS) {
     const model = genAI.getGenerativeModel({ model: modelName });
     
     for (let attempt = 0; attempt <= maxRetriesPerModel; attempt++) {
       try {
-        onProgress?.(`Using model: ${modelName}${attempt > 0 ? ` (retry ${attempt})` : ""}...`);
-        console.log(`[Gemini] Trying ${modelName}, attempt ${attempt + 1}...`);
-        
+        onProgress?.(`Using Google Gemini: ${modelName}${attempt > 0 ? ` (retry ${attempt})` : ""}...`);
         const result = await model.generateContent(parts);
-        const response = await result.response;
-        const text = response.text();
-        
-        console.log(`[Gemini] Success with ${modelName}!`);
-        return text;
+        return (await result.response).text();
       } catch (error: any) {
-        const errorMsg = error?.message || String(error);
-        const is429 = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("rate");
+        const msg = error?.message || String(error);
+        const isRateLimit = msg.includes("429") || msg.includes("quota");
         
-        if (is429) {
-          // Extract retry delay from error if available
-          const retryMatch = errorMsg.match(/retry in ([\d.]+)s/i);
-          const waitSeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : (attempt + 1) * 15;
-          
-          if (attempt < maxRetriesPerModel) {
-            onProgress?.(`Rate limited on ${modelName}. Waiting ${waitSeconds}s before retry...`);
-            console.log(`[Gemini] 429 on ${modelName}. Waiting ${waitSeconds}s...`);
-            await sleep(waitSeconds * 1000);
-          } else {
-            onProgress?.(`${modelName} quota exhausted. Trying next model...`);
-            console.log(`[Gemini] ${modelName} exhausted, falling back to next model.`);
-            break; // Move to next model
-          }
+        if (isRateLimit && attempt < maxRetriesPerModel) {
+          const wait = (attempt + 1) * 15;
+          onProgress?.(`Rate limited. Waiting ${wait}s...`);
+          await new Promise(r => setTimeout(r, wait * 1000));
+        } else if (isRateLimit) {
+          break; // Try next model
         } else {
-          // Non-rate-limit error — throw immediately
           throw error;
         }
       }
     }
   }
-  
-  throw new Error("All Gemini models are rate-limited. Please wait a minute and try again.");
+  throw new Error("All AI models are exhausted or rate-limited.");
 }
 
 /**
- * Send the raw files directly to Gemini's multimodal API.
- * Gemini can natively read PDFs, DOCX, etc. — no client-side parsing needed.
+ * Main entry point for CV extraction.
+ * Switches between GitHub Models and native Gemini based on available tokens.
  */
 export async function extractAndStructureCV(
   files: File[],
   onProgress?: (msg: string) => void
 ) {
-  onProgress?.("Converting files to base64...");
+  onProgress?.("Extracting text from documents...");
+  
+  const texts = [];
+  for (const file of files) {
+    const text = await extractTextFromFile(file, onProgress);
+    texts.push(`--- CONTENT FROM FILE: ${file.name} ---\n${text}\n`);
+  }
+  
+  const combinedText = texts.join("\n\n");
+  onProgress?.("Analyzing content with AI...");
 
-  // Build the content parts: the prompt text + each file as inlineData
-  const parts: any[] = [];
-
-  // Add the instruction prompt
-  parts.push({
-    text: `You are an expert HR recruitment assistant.
-I am providing you with document files directly. One or more of these documents is a CV/Resume, and optionally one is a Motivational Letter.
-
-YOUR TASK:
-1. Read and understand ALL the provided documents thoroughly.
-2. Extract the candidate's full professional profile from the CV.
-3. If a motivational letter is provided, use it to refine the "objective" summary — blending the candidate's factual experience with the aspirational intent from the letter.
-4. Return ONLY a valid JSON object (no markdown, no backticks, no extra text).
-
-CRITICAL RULES:
-- Extract EVERY job experience entry found in the CV, not just the most recent ones.
-- Extract ALL skills mentioned, including technical skills, soft skills, languages, and tools.
-- The "objective" should be 2-3 compelling sentences synthesizing the CV and letter.
-- Sort experience chronologically (newest first).
-- If a field is unclear, make your best inference rather than leaving it empty.
-
-REQUIRED JSON STRUCTURE:
-{
-  "name": "Full Name",
-  "role": "Current or most recent professional title",
-  "objective": "Synthesized 2-3 sentence professional summary",
-  "experience": [
-    {
-      "company": "Company Name",
-      "position": "Job Title",
-      "duration": "Start - End",
-      "description": "Key responsibilities and achievements"
-    }
-  ],
-  "skills": ["skill1", "skill2", "skill3"]
-}
-
-Output ONLY the JSON object, nothing else.`
-  });
-
-  // Add each file as inlineData
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    onProgress?.(`Processing file ${i + 1}/${files.length}: ${file.name}...`);
-    console.log(`[Gemini] Converting ${file.name} (${(file.size / 1024).toFixed(1)}KB) to base64...`);
-
-    const base64Data = await fileToBase64(file);
-    const mimeType = getMimeType(file);
-
-    console.log(`[Gemini] File ${file.name} → MIME: ${mimeType}, base64 length: ${base64Data.length}`);
-
-    parts.push({
-      inlineData: {
-        mimeType: mimeType,
-        data: base64Data,
-      },
-    });
+  let responseText: string;
+  
+  if (GITHUB_TOKEN) {
+    // Priority 1: GitHub Models API (OpenAI-compatible)
+    responseText = await callGithubModels(combinedText, onProgress);
+  } else {
+    // Priority 2: Google Gemini SDK
+    // Note: We send the text instead of binary to maintain consistency and bypass file size limits
+    const parts = [
+      { text: EXTRACTION_PROMPT },
+      { text: `DOCUMENTS CONTENT:\n${combinedText}` }
+    ];
+    responseText = await callGeminiWithRetry(parts, onProgress);
   }
 
-  onProgress?.("Sending documents to Gemini AI for analysis...");
-
   try {
-    const text = await callGeminiWithRetry(parts, onProgress);
-
-    console.log("[Gemini] Raw response:", text);
-    onProgress?.("AI analysis complete! Parsing results...");
-
-    // Parse JSON from response (handle potential markdown wrapping)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    return JSON.parse(text);
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+    onProgress?.("✓ Extraction complete!");
+    return parsed;
   } catch (error) {
-    console.error("[Gemini] Extraction Error:", error);
-    onProgress?.(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
-    throw error;
+    console.error("Failed to parse AI response:", responseText);
+    throw new Error("AI returned invalid data format. Please try again.");
   }
 }
 
 /**
- * Scour for job opportunities based on the extracted profile.
+ * Scour for job opportunities based on profile.
+ * Prefers GitHub Models if available.
  */
 export async function scourJobOpportunities(cvData: any) {
-  const parts = [{
-    text: `Based on the following candidate profile, generate a list of 5 diverse, highly relevant job opportunities that currently exist or are trending in the market.
-Include a title, company (can be a generic type or specific realistic examples), a brief "matching reason", and a projected salary range.
-
+  const prompt = `Based on this candidate profile, generate 5 diverse job opportunities.
+  
 CANDIDATE PROFILE:
 ${JSON.stringify(cvData, null, 2)}
 
-Return ONLY a valid JSON object (no markdown, no backticks):
+Return ONLY JSON:
 {
   "opportunities": [
     { 
-      "title": "string", 
-      "company": "string", 
-      "matchReason": "string", 
-      "salaryRange": "string", 
-      "platform": "LinkedIn | Indeed | Glassdoor | Specialized",
+      "title": "string", "company": "string", "matchReason": "string", 
+      "salaryRange": "string", "platform": "LinkedIn | Indeed | Glassdoor",
       "url": "https://www.linkedin.com/jobs/search/?keywords={TITLE}&location={LOCATION}" 
     }
   ]
-}
-PRECISION RULES:
-1. Use '+' for spaces in Title/Location.
-2. If the user is a Geoscientist/Geologist, vary the links to include LinkedIn and Indeed specifically for those titles.
-3. Ensure the location from the profile is used if present.`
-  }];
+}`;
 
-  try {
-    const text = await callGeminiWithRetry(parts);
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    return JSON.parse(text);
-  } catch (error) {
-    console.error("[Gemini] Job Scouring Error:", error);
-    throw error;
+  if (GITHUB_TOKEN) {
+    const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GITHUB_TOKEN}`
+      },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: prompt }],
+        model: GITHUB_MODEL,
+        temperature: 0.7
+      })
+    });
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    const match = text.match(/\{[\s\S]*\}/);
+    return JSON.parse(match ? match[0] : text);
+  } else {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const text = (await result.response).text();
+    const match = text.match(/\{[\s\S]*\}/);
+    return JSON.parse(match ? match[0] : text);
   }
 }
