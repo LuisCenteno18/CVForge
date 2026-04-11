@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Plus, Clock, Trash2, FileText } from 'lucide-react';
+import { X, Plus, Clock, Trash2, FileText, Settings } from 'lucide-react';
 import type { Session } from '../App';
 import './Sidebar.css';
 
@@ -11,6 +11,7 @@ interface SidebarProps {
   onSwitch: (id: string) => void;
   onDelete: (id: string, e: React.MouseEvent) => void;
   onCreate: () => void;
+  onOpenSettings: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -20,7 +21,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeSessionId,
   onSwitch,
   onDelete,
-  onCreate
+  onCreate,
+  onOpenSettings
 }) => {
   const formatDate = (timestamp: number) => {
     return new Intl.DateTimeFormat('en-US', {
@@ -78,7 +80,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="sidebar-footer">
-          <p>{sessions.length} sessions stored locally</p>
+          <button className="sidebar-settings-btn" onClick={onOpenSettings}>
+            <Settings size={18} style={{ marginRight: '8px' }} />
+            API Settings
+          </button>
+          <div className="sidebar-stats">
+            <p>{sessions.length} sessions stored locally</p>
+          </div>
         </div>
       </aside>
     </>

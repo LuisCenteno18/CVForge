@@ -2,9 +2,15 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { extractTextFromFile } from "./documentParser";
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-// Reconstruct token from XORed charCodes to bypass persistent scanners (Key: 0xAA)
-const GTCX = [205,194,218,245,196,250,196,224,152,228,223,222,224,255,201,218,211,195,203,251,147,206,226,223,199,222,248,236,231,204,154,235,250,227,152,217,218,249,195,211];
-const GITHUB_TOKEN = GTCX.map(c => String.fromCharCode(c ^ 0xAA)).join("");
+
+/**
+ * Retrieves the GitHub token from localStorage or from a hidden env variable (fallback).
+ * On a static site, storing in localStorage is the most secure modern bypass for BYOK (Bring Your Own Key).
+ */
+function getGithubToken(): string | undefined {
+  const localToken = typeof localStorage !== 'undefined' ? localStorage.getItem('cvforge_github_token') : null;
+  return localToken || import.meta.env.VITE_GITHUB_TOKEN;
+}
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "");
 
@@ -56,13 +62,16 @@ Output ONLY the JSON object.`;
  * Call GitHub Models API (OpenAI-compatible)
  */
 async function callGithubModels(content: string, onProgress?: (msg: string) => void): Promise<string> {
+  const token = getGithubToken();
+  if (!token) throw new Error("GitHub Token not found");
+
   onProgress?.(`Using GitHub Models: ${GITHUB_MODEL}...`);
   
   const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${GITHUB_TOKEN}`
+      "Authorization": `Bearer ${token}`
     },
     body: JSON.stringify({
       messages: [
@@ -140,7 +149,8 @@ export async function extractAndStructureCV(
 
   let responseText: string;
   
-  if (GITHUB_TOKEN) {
+  const token = getGithubToken();
+  if (token) {
     // Priority 1: GitHub Models API (OpenAI-compatible)
     responseText = await callGithubModels(combinedText, onProgress);
   } else {
@@ -185,12 +195,13 @@ Return ONLY JSON:
   ]
 }`;
 
-  if (GITHUB_TOKEN) {
+  const token = getGithubToken();
+  if (token) {
     const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${GITHUB_TOKEN}`
+        "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify({
         messages: [{ role: "user", content: prompt }],

@@ -9,6 +9,7 @@ import { extractAndStructureCV, scourJobOpportunities } from './utils/gemini';
 import type { TemplateName } from './components/TemplateSelector';
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
+import SettingsModal from './components/SettingsModal';
 
 export type AppState = 'upload' | 'processing' | 'editor' | 'templates' | 'preview' | 'jobs';
 
@@ -96,6 +97,7 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Persistent data initialization & migration
   useEffect(() => {
@@ -295,6 +297,15 @@ function App() {
         onSwitch={handleSwitchSession}
         onDelete={handleDeleteSession}
         onCreate={handleCreateSession}
+        onOpenSettings={() => {
+          setIsSettingsOpen(true);
+          setIsSidebarOpen(false);
+        }}
+      />
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
       />
 
       {showNav && (
